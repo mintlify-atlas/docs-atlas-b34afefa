@@ -90,15 +90,15 @@ from panama_postal import decode
 
 # Full PICO code with estafeta prefix
 d = decode("ACC99-PJ42W")
-print(d.lat)               # 8.94444609375
-print(d.lng)               # -79.56167109375001
+print(d.lat)               # 8.944446093749999
+print(d.lng)               # -79.56167109375002
 print(d.level)             # PICO
 print(d.precision_meters)  # 3.3
 print(d.estafeta_prefix)   # AC
 
 # Hyphens are stripped — same result
 d_no_hyphen = decode("ACC99PJ42W")
-print(d_no_hyphen.lat)     # 8.94444609375
+print(d_no_hyphen.lat)     # 8.944446093749999
 
 # Lowercase input is accepted
 d_lower = decode("acc99-pj42w")

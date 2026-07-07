@@ -61,21 +61,21 @@ Cells at each level are derived by successively subdividing the MACRO cell into 
 ```python
 from panama_postal import encode
 
-# Default: full PICO encoding
-cuerpo = encode(8.305509375, -79.20167109375001)
-print(cuerpo)  # 'M2C9A-F9A33'
+# Default: full PICO encoding (9 chars with hyphen)
+cuerpo = encode(8.944446093749999, -79.56167109375002)
+print(cuerpo)  # 'C99-PJ42W'
 
 # MACRO only — coarsest resolution, 2 characters
-macro = encode(8.305509375, -79.20167109375001, level="MACRO")
-print(macro)   # 'M2'  (2 chars, ~15.8 km precision)
+macro = encode(8.944446093749999, -79.56167109375002, level="MACRO")
+print(macro)   # 'C9'  (2 chars, ~15.8 km precision)
 
 # MICRO — 4 characters, no hyphen
-micro = encode(8.305509375, -79.20167109375001, level="MICRO")
-print(micro)   # 'M2C9'  (4 chars, ~660 m precision)
+micro = encode(8.944446093749999, -79.56167109375002, level="MICRO")
+print(micro)   # 'C99P'  (4 chars, ~660 m precision)
 
 # NANO — 6-character body, formatted as XXX-XXX
-nano = encode(8.305509375, -79.20167109375001, level="NANO")
-print(nano)    # 'M2C-9AF'  (7 chars with hyphen, ~26 m precision)
+nano = encode(8.944446093749999, -79.56167109375002, level="NANO")
+print(nano)    # 'C99-PJ4'  (7 chars with hyphen, ~26 m precision)
 
 # Invalid level raises ValueError
 try:

@@ -132,8 +132,8 @@ info = idx.lookup(d.lat, d.lng)
 if info:
     print(info["ESTAF_NAME"])          # Estafeta de paraiso
     print(info["VM_LEVEL2D"])          # AC
-    area_km2 = float(info["AREA"]) / 1e6
-    print(f"{area_km2:.2f} km²")      # e.g. 176.95 km²
+    area_m2 = float(info["AREA"])
+    print(f"{area_m2:.2f} m²")        # 176.95 m²
 else:
     print("No estafeta found for this point")
 ```

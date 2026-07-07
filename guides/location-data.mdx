@@ -1,7 +1,7 @@
 ---
-title: "Resolving Political Divisions from Coordinates"
+title: "Resolving Coordinates to Panama's Political Divisions"
 sidebarTitle: "Location Data"
-description: "How to resolve a coordinate pair to Panama's five political division levels — province, district, corregimiento, village, and neighborhood — using local GeoJSON files or the remote API."
+description: "Resolve coordinates to Panama's five administrative levels — province through neighborhood — using local GeoJSON files or the official remote API."
 ---
 
 Once you have a decoded coordinate pair, you can resolve it to Panama's administrative geography: province, district, corregimiento (township), poblado (village), and barrio (neighborhood). The `panama_postal_location` module provides three locator classes that cover different tradeoffs between speed, offline capability, and simplicity.
@@ -44,13 +44,13 @@ Levels for which no data is available return `None` rather than raising an error
 
 To enable offline resolution, download the boundary files for each political level you need. All files are hosted on the official government site.
 
-| File | Level |
-|------|-------|
-| `PROVINCIAS.geojson.gz` | Province |
-| `DISTRITOS.geojson.gz` | District |
-| `CORREGIMIENTOS.geojson.gz` | Corregimiento |
-| `POBLADOS.geojson.gz` | Village |
-| `BARRIOS.geojson.gz` | Neighborhood |
+| File | Level | Name property | ID property |
+|------|-------|---------------|-------------|
+| `PROVINCIAS.geojson.gz` | Province | `PROV_NOMB` | `PROV_ID` |
+| `DISTRITOS.geojson.gz` | District | `DIST_NOMB` | `DIST_ID` |
+| `CORREGIMIENTOS.geojson.gz` | Corregimiento | `CORR_NOMB` | `CORR_ID` |
+| `POBLADOS.geojson.gz` | Village | `LUPO_NOMB` | `LUPO_ID` |
+| `BARRIOS.geojson.gz` | Neighborhood | `BARR_NOMB` | `BARR_ID` |
 
 ```bash
 curl -O https://codigospostalespanama.gob.pa/PROVINCIAS.geojson.gz
@@ -135,6 +135,19 @@ if hybrid.has_local_data():
     print("Local boundary files found — lookups will be offline.")
 else:
     print("No local files — lookups will use the remote API.")
+```
+
+`LocalLocator.has_any_data()` exposes the same check directly on the lower-level class, which is useful when you are using `LocalLocator` on its own rather than through `HybridLocator`:
+
+```python
+from panama_postal_location import LocalLocator
+
+local = LocalLocator(".")
+
+if local.has_any_data():
+    result = local.lookup(lat, lng)
+else:
+    print("No GeoJSON boundary files found in the current directory.")
 ```
 
 ## `RemoteLocator` Timeout

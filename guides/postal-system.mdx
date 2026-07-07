@@ -1,7 +1,7 @@
 ---
-title: "Understanding Panama's Postal Code System"
+title: "Panama Postal Code Grid: Levels, Constants, and Codec"
 sidebarTitle: "Postal System"
-description: "A deep dive into the 4-level hierarchical geospatial grid that powers Panama's postal codes, including the base-30 alphabet, grid constants, and how encoding and decoding work."
+description: "Understand the 4-level geospatial grid: base-30 alphabet, ORIGIN constants, MACRO through PICO step sizes, and the encode and decode algorithm."
 ---
 
 Panama's postal code system encodes geographic coordinates directly into a short alphanumeric string using a hierarchical geospatial grid. Rather than assigning codes arbitrarily to addresses, each code is a mathematical description of a location — decode it and you get exact coordinates; supply coordinates and you can encode them. The algorithm was reverse-engineered from the official site's JavaScript bundle at [codigospostalespanama.gob.pa](https://codigospostalespanama.gob.pa) and verified against approximately 1,000 real codes.

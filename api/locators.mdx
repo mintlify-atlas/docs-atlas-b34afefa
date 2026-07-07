@@ -225,7 +225,8 @@ Delegates to `LocalLocator.has_any_data()`. Returns `True` if at least one GeoJS
 from panama_postal import decode
 from panama_postal_location import RemoteLocator, LocalLocator, HybridLocator
 
-lat, lng = 8.94444609375, -79.56167109375001
+d = decode("ACC99-PJ42W")
+lat, lng = d.lat, d.lng  # lat=8.94444609375, lng=-79.56167109375001
 
 # Recommended: hybrid (local with remote fallback)
 hybrid = HybridLocator(".")

@@ -1,7 +1,7 @@
 ---
 title: "Quickstart: Decode, Validate, and Enrich Postal Codes"
 sidebarTitle: "Quickstart"
-description: "Go from zero to a fully enriched postal code result in minutes — decode GPS coordinates, validate format and geography, run the CLI, and resolve estafeta and political divisions."
+description: "Decode a postal code to GPS coordinates, validate format and geography, call the CLI, and resolve estafeta and political divisions with Panama Postal."
 ---
 
 This guide walks you through Panama Postal's core workflows from the Python library and the command-line interface. All examples use real postal codes and real output values from the source. Start with a simple decode and build up to full geographic enrichment.
@@ -19,7 +19,7 @@ This guide walks you through Panama Postal's core workflows from the Python libr
   from panama_postal import decode
 
   d = decode("ACC99-PJ42W")
-  print(d.lat, d.lng)          # 8.94444609375  -79.56167109375001
+  print(d.lat, d.lng)          # 8.944446093749999  -79.56167109375002
   print(d.level)               # PICO
   print(d.precision_meters)    # 3.3
   print(d.estafeta_prefix)     # AC
@@ -36,12 +36,12 @@ This guide walks you through Panama Postal's core workflows from the Python libr
   ```python
   from panama_postal import validate
 
-  validate("ACC99-PJ42W")    # True
-  validate("ACCI99-PJ42W")   # False  (I is not in the base-30 alphabet)
-  validate("22-2222-2222")   # False  (coordinates fall outside Panama)
+  validate("ACC99-PJ42W")                # True
+  validate("ACCI99-PJ42W")               # False  (I is not in the base-30 alphabet)
+  validate("22-2222-2222", strict=True)  # False  (coordinates fall outside strict Panama bbox)
   ```
 
-  By default, `validate()` uses Panama's strict territorial bounding box (`lat ∈ [7.15, 9.70]`, `lng ∈ [-83.10, -77.10]`). Pass `strict=False` (or use the `--laxo` CLI flag) to switch to the official site's permissive bounding box, which includes adjacent ocean areas.
+  By default, `validate()` uses the official site's permissive bounding box (`lat ∈ [6, 11]`, `lng ∈ [-86, -74]`), which includes adjacent ocean and border areas. Pass `strict=True` (or omit the `--laxo` CLI flag) to use the tighter territorial bounding box (`lat ∈ [7.15, 9.70]`, `lng ∈ [-83.10, -77.10]`).
 
   ### Encode GPS coordinates to a postal code body
 
