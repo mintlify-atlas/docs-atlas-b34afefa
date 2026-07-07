@@ -1,0 +1,148 @@
+---
+title: "Using the Panama Postal Command-Line Interface"
+sidebarTitle: "CLI Usage"
+description: "A complete reference for the Panama Postal CLI — interactive and non-interactive modes, available flags, ANSI color output, and how optional data files enrich the results."
+---
+
+The Panama Postal CLI (`panama_postal_cli.py`) lets you decode, validate, and enrich postal codes directly from your terminal without writing any Python code. It supports two usage modes: an interactive prompt loop for exploratory work, and a non-interactive mode for scripting or batch lookups. No external dependencies are required beyond Python 3.10+.
+
+## Installation
+
+```bash
+git clone https://github.com/kass507/panama-postal.git
+cd panama-postal
+```
+
+There is no `pip install` step. The CLI runs directly with the Python interpreter.
+
+## Available Flags
+
+| Flag | Effect |
+|------|--------|
+| `--laxo` | Uses the official site's permissive bounding box (lat 6–11, lng −86 to −74) instead of the strict Panama territory bounding box |
+| `--no-location` | Skips province/district/corregimiento/poblado/barrio lookup — faster and requires no network connection |
+
+Flags can be combined with any number of code arguments:
+
+```bash
+python panama_postal_cli.py --laxo --no-location ACC99-PJ42W
+```
+
+## Usage Modes
+
+<Tabs>
+  <Tab title="Interactive">
+    Interactive mode launches a prompt loop where you can enter codes one at a time. This is the default when no code arguments are provided.
+
+    <Steps>
+      <Step title="Launch the interactive prompt">
+        ```bash
+        python panama_postal_cli.py
+        ```
+        The CLI prints a header and, if `estafeta.geojson.gz` is present, reports how many estafeta polygons were loaded. If the file is missing, it shows the download command as a reminder.
+      </Step>
+      <Step title="Enter a postal code">
+        At the `código>` prompt, type any valid Panama postal code and press Enter:
+        ```
+        código> ACC99-PJ42W
+        ```
+        The result is printed immediately below your input.
+      </Step>
+      <Step title="Review the output">
+        The CLI displays coordinates, precision level, estafeta data (if available), and the full political division hierarchy. A Google Maps link is always included.
+      </Step>
+      <Step title="Look up additional codes">
+        Continue entering codes at the prompt. Each result is printed and the prompt reappears.
+      </Step>
+      <Step title="Exit the session">
+        Type any of `salir`, `exit`, `quit`, or `q` to end the session.
+        ```
+        código> salir
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Non-interactive">
+    Pass one or more codes directly as command-line arguments to skip the interactive prompt. The CLI processes each code in order and exits when done.
+
+    **Single code:**
+    ```bash
+    python panama_postal_cli.py ACC99-PJ42W
+    ```
+
+    **Multiple codes in one call:**
+    ```bash
+    python panama_postal_cli.py ACC99-PJ42W ACC9A-H2K2P
+    ```
+
+    Each code produces its own output block, separated by a blank line. This mode is suitable for use in shell scripts or piped workflows.
+  </Tab>
+</Tabs>
+
+## Sample Output
+
+A successful lookup for a valid code inside Panama looks like this:
+
+```
+Código consultado: ACC99-PJ42W
+──────────────────────────────────────────────────
+✓ VÁLIDO
+  Latitud:       8.1444461
+  Longitud:      -79.1616711
+  Precisión:     ~3.3 m
+  Prefijo:       AC
+  Estafeta:      Estafeta de Paraiso
+  Zona postal:   A6199 = AC
+  Área:          176.95  km²
+  Provincia:     PANAMÁ
+  Distrito:      PANAMÁ
+  Corregimiento: ANCÓN
+  Poblado:       ANCÓN
+  Barrio:        AMADOR
+  Ver en mapa:   https://www.google.com/maps?q=8.1444461,-79.1616711
+```
+
+## ANSI Color Output
+
+The CLI uses ANSI escape codes to color-code results at a glance:
+
+<CardGroup cols={3}>
+  <Card title="Green — Valid" icon="circle-check">
+    The code has a valid format and its coordinates fall inside Panama.
+  </Card>
+  <Card title="Yellow — Outside Panama" icon="triangle-exclamation">
+    The format is valid but the decoded coordinates fall outside the Panama bounding box.
+  </Card>
+  <Card title="Red — Invalid" icon="circle-xmark">
+    The code cannot be parsed: it contains illegal characters, has the wrong length, or is not a string.
+  </Card>
+</CardGroup>
+
+## Data File Enrichment
+
+The CLI automatically detects which optional data files are present in the working directory and adjusts its output accordingly.
+
+<Accordion title="With estafeta.geojson.gz">
+  The estafeta name (`Estafeta de Paraiso`), internal zone code (`A6199 = AC`), and coverage area in km² are displayed for every valid code. The index is loaded once at startup.
+
+  Download the file with:
+  ```bash
+  curl -O https://codigospostalespanama.gob.pa/estafeta.geojson.gz
+  ```
+</Accordion>
+
+<Accordion title="Without estafeta.geojson.gz">
+  The `Estafeta`, `Zona postal`, and `Área` lines are omitted. Decoding, validation, and coordinate output still work normally. The CLI prints a reminder at startup with the download command.
+</Accordion>
+
+<Accordion title="With political division GeoJSON files">
+  When any of the five boundary files (`PROVINCIAS.geojson.gz`, `DISTRITOS.geojson.gz`, `CORREGIMIENTOS.geojson.gz`, `POBLADOS.geojson.gz`, `BARRIOS.geojson.gz`) are present, the corresponding division levels are resolved locally — no network request needed.
+</Accordion>
+
+<Accordion title="Without political division GeoJSON files">
+  The CLI automatically calls the official remote endpoint (`/api/location`) to resolve province, district, corregimiento, poblado, and barrio. Pass `--no-location` to skip this lookup entirely.
+</Accordion>
+
+<Warning>
+  Remote location lookups require an active internet connection to `codigospostalespanama.gob.pa`. In offline environments, either download the GeoJSON boundary files or use `--no-location` to avoid connection errors.
+</Warning>

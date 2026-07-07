@@ -1,0 +1,92 @@
+---
+title: "Encode GPS Coordinates Into a Panama Postal Code Body"
+sidebarTitle: "encode"
+description: "Convert a latitude and longitude into the geographic body of a Panama postal code at any of four precision levels, from MACRO (~15.8 km) to PICO (~3.3 m)."
+---
+
+The `encode()` function takes a latitude and longitude and returns the **geographic body** of a Panama postal code — the portion that encodes location in the grid hierarchy, without the 2-character estafeta prefix. You can control the precision of the result by passing one of four `level` values. The default level is `"PICO"`, which produces the highest-resolution 8-character body, formatted with a hyphen to match the style used on the official postal code site.
+
+## Function Signature
+
+```python
+def encode(lat: float, lng: float, level: str = "PICO") -> str
+```
+
+## Parameters
+
+<ParamField path="lat" type="float" required>
+  Latitude of the point to encode, in decimal degrees. The grid origin is at latitude `10.0°N`, and the encoded body represents an offset southward from that origin. Values outside the encodable grid are accepted without error — the resulting code may decode to a point outside Panama.
+</ParamField>
+
+<ParamField path="lng" type="float" required>
+  Longitude of the point to encode, in decimal degrees. The grid origin is at longitude `-83.5°`. The encoded body represents an offset eastward from that origin.
+</ParamField>
+
+<ParamField path="level" type="str" default="PICO">
+  Precision level for the output. Controls how many character pairs are generated and how the result is formatted. Must be one of:
+
+  | Value | Output characters | Formatted length | Precision |
+  |-------|-------------------|------------------|-----------|
+  | `"MACRO"` | 2 | `XX` (2 chars) | ~15,800 m |
+  | `"MICRO"` | 4 | `XXXX` (4 chars) | ~660 m |
+  | `"NANO"` | 6 | `XXX-XXX` (7 chars with hyphen) | ~26 m |
+  | `"PICO"` | 8 | `XXX-XXXXX` (9 chars with hyphen) | ~3.3 m |
+
+  Raises `ValueError` if the value is not one of the four strings above. The error message is `"Nivel inválido: <value>"`.
+</ParamField>
+
+## Return Value
+
+A formatted string containing the geographic body of the postal code, without the estafeta prefix. The length and format depend on the `level` chosen — see the table above.
+
+<Note>
+  For `"NANO"` and `"PICO"` levels, a hyphen is inserted after the 3rd character of the body string. This matches the formatting used on the official Panama postal code site (`codigospostalespanama.gob.pa`), where a 10-character full code (2-char prefix + 8-char body) is displayed with the hyphen falling at position 5 — which lands at character 3 of the body portion.
+</Note>
+
+## Grid Origin
+
+All encoding is computed as an offset from a fixed grid origin:
+
+- **Origin latitude:** `10.0°N`
+- **Origin longitude:** `−83.5°`
+
+Cells at each level are derived by successively subdividing the MACRO cell into a 24×24 MICRO grid, each MICRO cell into a 25×25 NANO grid, and each NANO cell into an 8×8 PICO grid.
+
+<Tip>
+  `encode()` returns only the geographic body. To build a **complete** postal code (e.g., `ACC99-PJ42W`), you also need the 2-character estafeta prefix that identifies the local postal branch. Prefix lookup requires a point-in-polygon check against the `estafeta.geojson.gz` data file using the `EstafetaIndex` class. Prepend the prefix to the body returned here to form the full code.
+</Tip>
+
+## Examples
+
+```python
+from panama_postal import encode
+
+# Default: full PICO encoding
+cuerpo = encode(8.305509375, -79.20167109375001)
+print(cuerpo)  # 'M2C9A-F9A33'
+
+# MACRO only — coarsest resolution, 2 characters
+macro = encode(8.305509375, -79.20167109375001, level="MACRO")
+print(macro)   # 'M2'  (2 chars, ~15.8 km precision)
+
+# MICRO — 4 characters, no hyphen
+micro = encode(8.305509375, -79.20167109375001, level="MICRO")
+print(micro)   # 'M2C9'  (4 chars, ~660 m precision)
+
+# NANO — 6-character body, formatted as XXX-XXX
+nano = encode(8.305509375, -79.20167109375001, level="NANO")
+print(nano)    # 'M2C-9AF'  (7 chars with hyphen, ~26 m precision)
+
+# Invalid level raises ValueError
+try:
+    encode(8.0, -79.0, level="ULTRA")
+except ValueError as e:
+    print(e)   # Nivel inválido: ULTRA
+
+# Round-trip: encode then decode recovers the same cell center
+from panama_postal import decode
+
+d = decode("ACC99-PJ42W")
+re_encoded = encode(d.lat, d.lng, level="PICO")
+print(re_encoded)  # 'C99-PJ42W'  (body only, without 'AC' prefix)
+```

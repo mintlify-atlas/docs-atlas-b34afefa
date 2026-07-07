@@ -1,0 +1,124 @@
+---
+title: "Understanding Panama's Postal Code System"
+sidebarTitle: "Postal System"
+description: "A deep dive into the 4-level hierarchical geospatial grid that powers Panama's postal codes, including the base-30 alphabet, grid constants, and how encoding and decoding work."
+---
+
+Panama's postal code system encodes geographic coordinates directly into a short alphanumeric string using a hierarchical geospatial grid. Rather than assigning codes arbitrarily to addresses, each code is a mathematical description of a location — decode it and you get exact coordinates; supply coordinates and you can encode them. The algorithm was reverse-engineered from the official site's JavaScript bundle at [codigospostalespanama.gob.pa](https://codigospostalespanama.gob.pa) and verified against approximately 1,000 real codes.
+
+## Code Structure
+
+A full postal code is exactly **10 characters** long, formatted as `XXYYY-ZZWWW` (with a hyphen for readability). It is composed of two parts:
+
+- **Estafeta prefix** (characters 0–1): a 2-character code identifying the postal office zone (e.g., `AC`). This prefix cannot be derived from coordinates alone — it requires a point-in-polygon lookup against the estafeta boundary data.
+- **Geographic body** (characters 2–9): an 8-character string that encodes the exact location using the hierarchical grid.
+
+Shorter codes — 2, 4, 6, or 8 characters in the body — are also valid and represent progressively coarser precision levels.
+
+## The Base-30 Alphabet
+
+All characters in the geographic body are drawn from a 30-character alphabet:
+
+```
+23456789ABCDEFGHJKLMNPQRSTVWXZ
+```
+
+The characters `0`, `1`, `I`, `O`, `U`, and `Y` are deliberately excluded to prevent visual ambiguity (for example, `0`/`O` and `1`/`I` are easy to confuse in print and on signs). Every value in the grid is encoded as a pair of characters from this alphabet, giving 30 × 30 = 900 possible values per pair.
+
+## The Four Precision Levels
+
+The grid is hierarchical: each level subdivides the cell from the level above it. The four levels and their approximate real-world sizes are:
+
+| Level | Approx. size | Characters in body |
+|-------|--------------|--------------------|
+| MACRO | ~15.8 km     | 1st pair (chars 0–1) |
+| MICRO | ~660 m       | 2nd pair (chars 2–3) |
+| NANO  | ~26 m        | 3rd pair (chars 4–5) |
+| PICO  | ~3.3 m       | 4th pair (chars 6–7) |
+
+A PICO-level code (the default full code) pinpoints a location to within roughly 3.3 metres — precise enough to distinguish individual rooms in a building.
+
+## Grid Constants
+
+The grid is anchored at **(10°N, 83.5°W)** — a point off the northwest coast of Panama. Every coordinate is computed as an offset from this origin. The step sizes at each level are:
+
+```python
+ORIGIN_LAT  = 10.0
+ORIGIN_LNG  = -83.5
+
+STEP_MACRO  = 0.1425          # degrees per MACRO cell
+STEP_MICRO  = 0.1425 / 24     # degrees per MICRO cell
+STEP_NANO   = 0.0059375 / 25  # degrees per NANO cell
+STEP_PICO   = 2375e-7 / 8     # degrees per PICO cell
+```
+
+The subdivision counts (24 × 24, 25 × 25, 8 × 8) are fixed by the official algorithm and cannot be changed without breaking compatibility with existing codes.
+
+## How Decoding Works
+
+Decoding peels the body two characters at a time, refining the coordinate at each level. Here is a conceptual walkthrough for a full PICO code:
+
+<Steps>
+  <Step title="Strip the estafeta prefix">
+    If the code is 10 characters (e.g., `ACC99-PJ42W`), the first two characters (`AC`) are the estafeta prefix. The remaining 8 characters (`C99PJ42W` after stripping the hyphen) are the geographic body.
+  </Step>
+  <Step title="Decode the MACRO pair (chars 0–1 of body)">
+    Convert the 2-char pair to an integer: `value = ALPHA_INDEX[char0] * 30 + ALPHA_INDEX[char1]`. Divide by the number of MACRO columns (40) to get the row and column in the macro grid. Multiply by `STEP_MACRO` to get the top-left corner of the MACRO cell.
+  </Step>
+  <Step title="Decode the MICRO pair (chars 2–3)">
+    Repeat inside the MACRO cell: decode the pair, compute row/col within a 24 × 24 sub-grid, and multiply by `STEP_MICRO` to refine the offset.
+  </Step>
+  <Step title="Decode the NANO pair (chars 4–5)">
+    Refine further within a 25 × 25 sub-grid of the MICRO cell, using `STEP_NANO`.
+  </Step>
+  <Step title="Decode the PICO pair (chars 6–7)">
+    Final refinement within an 8 × 8 sub-grid of the NANO cell, using `STEP_PICO`. The final coordinate is the accumulated offset plus half a PICO cell (the centre of the cell, not the corner).
+  </Step>
+</Steps>
+
+## How Encoding Works
+
+`encode(lat, lng, level)` reverses the process: it computes each level's row and column from the remainder after dividing the coordinate offset by the step size, then encodes each `row * cols + col` value as a 2-character pair using `ALPHABET[value // 30] + ALPHABET[value % 30]`.
+
+<Note>
+  `encode()` returns only the **8-character geographic body** (e.g., `C99-PJ42W`). The 2-character estafeta prefix — needed to form the full 10-character code — requires a point-in-polygon lookup against `estafeta.geojson.gz`. See [Enriching Codes with Estafeta Data](/guides/estafeta-data) for details.
+</Note>
+
+## Code Examples
+
+The `decode()` function accepts codes at any precision level. The returned `DecodedPostal` object carries the coordinates, the precision in metres, the level name, and the estafeta prefix (if present in the input code).
+
+```python
+from panama_postal import decode
+
+# MACRO only — 2-char body, ~15.8 km precision
+d_macro = decode("AC")
+print(d_macro.level)             # MACRO
+print(d_macro.precision_meters)  # 15814.5 (approx)
+
+# Full PICO code — 10 chars total, ~3.3 m precision
+d_pico = decode("ACC99-PJ42W")
+print(d_pico.level)              # PICO
+print(d_pico.precision_meters)   # 3.3 (approx)
+print(d_pico.lat, d_pico.lng)    # 8.14444... -79.16167...
+print(d_pico.estafeta_prefix)    # AC
+```
+
+You can also validate a code (format check + Panama bounding box) or encode coordinates back to a body string:
+
+```python
+from panama_postal import encode, validate
+
+# Validate
+validate("ACC99-PJ42W")    # True
+validate("ACCI99-PJ42W")   # False — 'I' is not in the alphabet
+validate("22-2222-2222")   # False — coordinates fall outside Panama
+
+# Encode coordinates → geographic body (no estafeta prefix)
+body = encode(8.305509375, -79.20167109375001)
+print(body)  # e.g. 'M2C9A-F9A33'
+```
+
+<Tip>
+  Use `validate(code, strict=True)` to apply a tighter bounding box constrained to the actual Panama territory (lat 7.15–9.70, lng −83.10 to −77.10). The default (`strict=False`) matches the official site's more permissive bounding box.
+</Tip>

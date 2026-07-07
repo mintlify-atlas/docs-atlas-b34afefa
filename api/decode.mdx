@@ -1,0 +1,118 @@
+---
+title: "Decode Any Panama Postal Code String to GPS Coordinates"
+sidebarTitle: "decode"
+description: "Turn any Panama postal code string into latitude, longitude, precision, and level data representing the center of its geographic grid cell."
+---
+
+The `decode()` function is the core entry point for converting a Panama postal code string into structured geographic data. It accepts codes with or without an estafeta prefix, handles hyphens and spaces automatically, normalizes to uppercase, and returns a `DecodedPostal` dataclass with the latitude and longitude at the center of the matched grid cell — or `None` when the code cannot be parsed.
+
+## Function Signature
+
+```python
+def decode(code: str) -> DecodedPostal | None
+```
+
+## Parameters
+
+<ParamField path="code" type="str" required>
+  A Panama postal code string to decode. Hyphens and spaces are stripped automatically before parsing. The string is also converted to uppercase, so lowercase input is accepted.
+
+  **Accepted formats:**
+  - `"ACC99-PJ42W"` — 10-char code with estafeta prefix and hyphen
+  - `"ACC99PJ42W"` — 10-char code with estafeta prefix, no hyphen
+  - `"M9C9A-G4434"` — 10-char code, alternate prefix
+  - `"M9C9AG4434"` — same, no hyphen
+  - Shorter body-only codes (`2`, `4`, `6`, or `8` clean characters)
+</ParamField>
+
+## Return Value
+
+Returns a `DecodedPostal` dataclass on success, or `None` if the code is invalid.
+
+<ResponseField name="DecodedPostal" type="dataclass">
+  <Expandable title="DecodedPostal fields">
+    <ResponseField name="lat" type="float">
+      Latitude of the center of the decoded grid cell, in decimal degrees.
+    </ResponseField>
+    <ResponseField name="lng" type="float">
+      Longitude of the center of the decoded grid cell, in decimal degrees.
+    </ResponseField>
+    <ResponseField name="precision_meters" type="float">
+      Approximate precision of the decoded location — half the cell size in meters. Corresponds to the decoding level:
+
+      | Level | Approximate precision |
+      |-------|-----------------------|
+      | `MACRO` | ~15,800 m |
+      | `MICRO` | ~660 m |
+      | `NANO` | ~26 m |
+      | `PICO` | ~3.3 m |
+    </ResponseField>
+    <ResponseField name="level" type="str">
+      The resolution level of the decoded code. One of `"MACRO"`, `"MICRO"`, `"NANO"`, or `"PICO"`, determined by the number of characters in the geographic body after stripping the estafeta prefix.
+    </ResponseField>
+    <ResponseField name="estafeta_prefix" type="str | None">
+      The 2-character estafeta prefix extracted from the input code (e.g., `"AC"`), or `None` if no prefix was present. A prefix is detected when the cleaned input is exactly 10 characters long — the first two characters are treated as the prefix and the remaining eight as the geographic body.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Normalization Rules
+
+Before decoding, `decode()` passes the input through an internal `_normalize()` step that enforces the following rules:
+
+- Hyphens (`-`) and spaces are stripped, and the result is converted to uppercase.
+- Every remaining character must belong to the base-30 alphabet: `23456789ABCDEFGHJKLMNPQRSTVWXZ`. Note that the letters `I`, `O`, `U`, and `Y` are **not** in the alphabet and will cause the code to be rejected.
+- The cleaned string must be no longer than 10 characters.
+- If exactly 10 characters remain, the first 2 are the estafeta prefix and the remaining 8 form the geographic body.
+- For strings shorter than 10 characters, the body length must be even: `2`, `4`, `6`, or `8` characters. Odd-length bodies are rejected.
+
+## Decoding Levels
+
+The geographic body is decoded in successive 2-character pairs, each subdividing the previous cell:
+
+| Pairs used | Level | Body length | Precision |
+|------------|-------|-------------|-----------|
+| Chars 0–1 only | `MACRO` | 2 | ~15,800 m |
+| Chars 0–3 | `MICRO` | 4 | ~660 m |
+| Chars 0–5 | `NANO` | 6 | ~26 m |
+| Chars 0–7 | `PICO` | 8 | ~3.3 m |
+
+Each pair is decoded from base-30 into a row/column offset within that level's grid, then accumulated into a final latitude and longitude at the cell center.
+
+<Warning>
+  `decode()` does **not** check whether the decoded point falls inside Panama. A syntactically valid code could yield coordinates anywhere in the encoded grid. Use [`validate()`](/api/validate) to confirm the point is within Panama's bounding box, or call [`is_in_panama()`](/api/validate#is_in_panama) directly on coordinates you have already decoded.
+</Warning>
+
+## Examples
+
+```python
+from panama_postal import decode
+
+# Full PICO code with estafeta prefix
+d = decode("ACC99-PJ42W")
+print(d.lat)               # 8.94444609375
+print(d.lng)               # -79.56167109375001
+print(d.level)             # PICO
+print(d.precision_meters)  # 3.3
+print(d.estafeta_prefix)   # AC
+
+# Hyphens are stripped — same result
+d_no_hyphen = decode("ACC99PJ42W")
+print(d_no_hyphen.lat)     # 8.94444609375
+
+# Lowercase input is accepted
+d_lower = decode("acc99-pj42w")
+print(d_lower.level)       # PICO
+
+# Body-only code (no estafeta prefix) — 8 clean chars
+d2 = decode("C99PJ42W")
+print(d2.estafeta_prefix)  # None
+
+# Odd-length body after stripping → invalid
+d3 = decode("C99-PJ42W")   # 9 clean chars, not 10, and length is odd
+print(d3)                  # None
+
+# Invalid character: 'I' is not in the base-30 alphabet
+d4 = decode("ACCI99-PJ42W")
+print(d4)                  # None
+```

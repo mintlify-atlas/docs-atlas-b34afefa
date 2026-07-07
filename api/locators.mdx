@@ -1,0 +1,250 @@
+---
+title: "Location Locators: Resolve Coordinates to Panama Divisions"
+sidebarTitle: "Locators"
+description: "Resolve a (lat, lng) pair to Panama's political divisions — province, district, corregimiento, poblado, and barrio — using remote, local, or hybrid lookup."
+---
+
+Panama Postal provides three locator classes for resolving geographic coordinates to Panama's five-tier political division hierarchy. `RemoteLocator` queries the official government API over HTTP, `LocalLocator` performs fully offline point-in-polygon lookups against locally downloaded GeoJSON files, and `HybridLocator` combines both strategies — using local data when available and transparently falling back to the remote endpoint.
+
+<Tip>
+  **`HybridLocator` is recommended for most applications.** It gives you offline
+  speed when local data files are present, with automatic remote fallback when
+  they are absent or yield no result — no conditional logic required in your code.
+</Tip>
+
+---
+
+## Shared Return Format
+
+All three `lookup()` methods return the same normalized dict structure, or `None` if the coordinate could not be resolved at all.
+
+```python
+{
+    "provincia":      {"nombre": "PANAMÁ",  "codigo": "08"} | None,
+    "distrito":       {"nombre": "PANAMÁ",  "codigo": "01"} | None,
+    "corregimiento":  {"nombre": "ANCÓN",   "codigo": "08"} | None,
+    "poblado":        {"nombre": "ANCÓN",   "codigo": "003"} | None,
+    "barrio":         {"nombre": "AMADOR",  "codigo": "002"} | None,
+}
+```
+
+<ResponseField name="return" type="dict[str, Any] | None">
+  Normalized political-division result, or `None` when the point falls outside
+  all known boundaries or a network/file error occurs.
+
+  <Expandable title="Top-level keys">
+    <ResponseField name="provincia" type="{nombre: str, codigo: str} | None">
+      Province-level match. `None` when no data is available for this tier.
+    </ResponseField>
+    <ResponseField name="distrito" type="{nombre: str, codigo: str} | None">
+      District-level match. `None` when no data is available for this tier.
+    </ResponseField>
+    <ResponseField name="corregimiento" type="{nombre: str, codigo: str} | None">
+      Corregimiento-level match. `None` when no data is available for this tier.
+    </ResponseField>
+    <ResponseField name="poblado" type="{nombre: str, codigo: str} | None">
+      Populated-place match. `None` when no data is available for this tier.
+    </ResponseField>
+    <ResponseField name="barrio" type="{nombre: str, codigo: str} | None">
+      Neighbourhood/barrio match. `None` when no data is available for this tier.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+Levels for which the underlying data is unavailable (missing file for `LocalLocator`, absent key for `RemoteLocator`) return `None` rather than raising an exception.
+
+---
+
+## RemoteLocator
+
+`RemoteLocator` resolves coordinates by calling Panama's official government API endpoint. No local files are required.
+
+<Note>
+  The remote endpoint is the **official Panama Postal Service API** at
+  `https://codigospostalespanama.gob.pa/api/location`. Results depend on
+  network availability and the upstream service. All requests are sent with
+  the `User-Agent: panama-postal-cli/1.0` header.
+</Note>
+
+### Constructor
+
+```python
+RemoteLocator(
+    base_url: str = "https://codigospostalespanama.gob.pa/api/location",
+    timeout: float = 10.0
+)
+```
+
+<ParamField body="base_url" type="str" default="https://codigospostalespanama.gob.pa/api/location">
+  Full base URL of the location API. The `lookup()` method appends
+  `?lat={lat}&lng={lng}` query parameters to this URL. Override this in tests
+  or when pointing at a self-hosted mirror.
+</ParamField>
+
+<ParamField body="timeout" type="float" default="10.0">
+  HTTP request timeout in seconds. Applies to both connection and read phases.
+  Requests that exceed this value return `None` rather than raising.
+</ParamField>
+
+### `lookup()`
+
+```python
+def lookup(self, lat: float, lng: float) -> dict[str, Any] | None
+```
+
+Issue a `GET` request to `{base_url}?lat={lat}&lng={lng}` and return the normalized result.
+
+<ParamField body="lat" type="float" required>
+  Latitude in decimal degrees (WGS 84).
+</ParamField>
+
+<ParamField body="lng" type="float" required>
+  Longitude in decimal degrees (WGS 84).
+</ParamField>
+
+Returns `None` on any of the following conditions: `URLError` (including DNS failure or refused connection), `JSONDecodeError` (malformed response body), `TimeoutError`, or an HTTP error response.
+
+---
+
+## LocalLocator
+
+`LocalLocator` performs fully offline point-in-polygon lookups using the same ray-casting engine as `EstafetaIndex`. It reads five gzip-compressed GeoJSON boundary files from a local directory.
+
+### Required Data Files
+
+Download all five files to your `data_dir` before use:
+
+| File | Name field | Code field |
+|------|-----------|------------|
+| `PROVINCIAS.geojson.gz` | `PROV_NOMB` | `PROV_ID` |
+| `DISTRITOS.geojson.gz` | `DIST_NOMB` | `DIST_ID` |
+| `CORREGIMIENTOS.geojson.gz` | `CORR_NOMB` | `CORR_ID` |
+| `POBLADOS.geojson.gz` | `LUPO_NOMB` | `LUPO_ID` |
+| `BARRIOS.geojson.gz` | `BARR_NOMB` | `BARR_ID` |
+
+All five files are available from the official Panama Postal Service. Not all files need to be present; missing levels return `None` in the result dict.
+
+### Constructor
+
+```python
+LocalLocator(data_dir: str | Path = ".")
+```
+
+<ParamField body="data_dir" type="str | Path" default='"."'>
+  Directory that contains the GeoJSON boundary files listed in the table above.
+  The locator lazy-loads each file on first access and caches the resulting
+  `EstafetaIndex` for the lifetime of the instance.
+</ParamField>
+
+### `lookup()`
+
+```python
+def lookup(self, lat: float, lng: float) -> dict[str, Any] | None
+```
+
+Perform point-in-polygon lookup against each available GeoJSON layer.
+
+<ParamField body="lat" type="float" required>
+  Latitude in decimal degrees (WGS 84).
+</ParamField>
+
+<ParamField body="lng" type="float" required>
+  Longitude in decimal degrees (WGS 84).
+</ParamField>
+
+Returns `None` when no GeoJSON files are present in `data_dir` at all. When at least one file exists, missing layers appear as `None` entries in the dict rather than causing `None` to be returned for the whole result.
+
+### `has_any_data()`
+
+```python
+def has_any_data(self) -> bool
+```
+
+Returns `True` if at least one of the five expected GeoJSON files exists in `data_dir`. Use this to check whether local data has been downloaded before deciding to use a `LocalLocator` or fall back to `RemoteLocator`.
+
+---
+
+## HybridLocator
+
+`HybridLocator` composes a `LocalLocator` and a `RemoteLocator` into a single object with a flexible `prefer` strategy.
+
+### Constructor
+
+```python
+HybridLocator(data_dir: str | Path = ".", timeout: float = 10.0)
+```
+
+<ParamField body="data_dir" type="str | Path" default='"."'>
+  Directory passed through to the internal `LocalLocator`. See `LocalLocator`
+  for the expected GeoJSON files.
+</ParamField>
+
+<ParamField body="timeout" type="float" default="10.0">
+  HTTP timeout in seconds passed through to the internal `RemoteLocator`.
+</ParamField>
+
+### `lookup()`
+
+```python
+def lookup(self, lat: float, lng: float, prefer: str = "auto") -> dict[str, Any] | None
+```
+
+<ParamField body="lat" type="float" required>
+  Latitude in decimal degrees (WGS 84).
+</ParamField>
+
+<ParamField body="lng" type="float" required>
+  Longitude in decimal degrees (WGS 84).
+</ParamField>
+
+<ParamField body="prefer" type="str" default='"auto"'>
+  Strategy for choosing between local and remote data:
+
+  - `"auto"` — uses local data if `has_local_data()` returns `True` and the
+    local lookup returns a non-`None` result; otherwise falls back to the remote
+    endpoint. This is the default and recommended value.
+  - `"local"` — performs a local-only lookup. No network request is made,
+    even if the local lookup returns `None`.
+  - `"remote"` — calls the remote endpoint directly, regardless of whether
+    local files are present.
+</ParamField>
+
+### `has_local_data()`
+
+```python
+def has_local_data(self) -> bool
+```
+
+Delegates to `LocalLocator.has_any_data()`. Returns `True` if at least one GeoJSON boundary file exists in `data_dir`.
+
+---
+
+## Usage Example
+
+```python
+from panama_postal import decode
+from panama_postal_location import RemoteLocator, LocalLocator, HybridLocator
+
+lat, lng = 8.94444609375, -79.56167109375001
+
+# Recommended: hybrid (local with remote fallback)
+hybrid = HybridLocator(".")
+r = hybrid.lookup(lat, lng)
+if r:
+    for level, data in r.items():
+        if data:
+            print(f"{level}: {data['nombre']} (cod: {data['codigo']})")
+
+# Remote only
+remote = RemoteLocator(timeout=5.0)
+r = remote.lookup(lat, lng)
+
+# Local only (no network)
+local = LocalLocator("/path/to/geojson/")
+r = local.lookup(lat, lng)
+if not local.has_any_data():
+    print("No local GeoJSON files found")
+
+# Force remote via hybrid
+r = hybrid.lookup(lat, lng, prefer="remote")
+```

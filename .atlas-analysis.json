@@ -1,0 +1,78 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Panama Postal",
+  "projectDescription": "An open-source Python library and CLI tool to decode, encode, validate, and enrich Panama postal codes — with no external dependencies.",
+  "theme": "palm",
+  "primaryColor": "#eb8f2f",
+  "lightColor": "#259db6",
+  "darkColor": "#d4e0e4",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/postal-system",
+              "guides/estafeta-data",
+              "guides/location-data",
+              "guides/cli-usage"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Codec",
+            "pages": [
+              "api/decode",
+              "api/encode",
+              "api/validate"
+            ]
+          },
+          {
+            "group": "Estafeta & Location",
+            "pages": [
+              "api/estafeta-index",
+              "api/locators"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Decode Panama postal codes to precise GPS coordinates (MACRO/MICRO/NANO/PICO levels)",
+    "Encode GPS coordinates to postal code bodies",
+    "Validate postal code format and geographic bounds (strict or lax)",
+    "Lookup postal office (estafeta) name, area, and zone via point-in-polygon against GeoJSON",
+    "Lookup political division (province, district, corregimiento, village, neighborhood) locally or via remote API",
+    "Interactive and non-interactive CLI with ANSI color output",
+    "Zero external dependencies — pure Python stdlib",
+    "Hybrid local/remote lookup: uses downloaded GeoJSON files when available, falls back to official API"
+  ],
+  "publicApiSurface": [
+    "decode(code: str) -> DecodedPostal | None",
+    "encode(lat: float, lng: float, level: str = 'PICO') -> str",
+    "validate(code: str, strict: bool = False) -> bool",
+    "is_in_panama(lat: float, lng: float, strict: bool = False) -> bool",
+    "DecodedPostal (dataclass: lat, lng, precision_meters, level, estafeta_prefix)",
+    "EstafetaIndex.from_file(path) -> EstafetaIndex",
+    "EstafetaIndex.lookup(lat, lng) -> dict | None",
+    "RemoteLocator.lookup(lat, lng) -> dict | None",
+    "LocalLocator.lookup(lat, lng) -> dict | None",
+    "HybridLocator.lookup(lat, lng, prefer='auto') -> dict | None",
+    "panama_postal_cli.py --laxo --no-location [codes...]"
+  ]
+}

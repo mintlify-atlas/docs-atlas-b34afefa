@@ -1,0 +1,123 @@
+---
+title: "Validate Panama Postal Code Format and Panama Location"
+sidebarTitle: "validate"
+description: "Check whether a postal code is valid and its decoded point falls inside Panama; supports an optional strict bounding box for tighter checks."
+---
+
+This page documents two related functions — `validate()` and `is_in_panama()` — that together cover both format validation and geographic bounds checking for Panama postal codes and coordinates. `validate()` combines a full decode with a bounding box check in a single call, while `is_in_panama()` lets you run the geographic check independently when you already have coordinates in hand.
+
+---
+
+## validate()
+
+`validate()` returns `True` only when a code both passes format validation and decodes to a point that falls within Panama's bounding box. It internally calls `decode()` and then `is_in_panama()`, so any code that would make `decode()` return `None` — invalid characters, wrong length, non-alphabet input — will return `False` here as well.
+
+### Function Signature
+
+```python
+def validate(code: str, strict: bool = False) -> bool
+```
+
+### Parameters
+
+<ParamField path="code" type="str" required>
+  The postal code string to validate. The same normalization rules as `decode()` apply: hyphens and spaces are stripped, input is uppercased, characters outside the base-30 alphabet (`23456789ABCDEFGHJKLMNPQRSTVWXZ`) are rejected, and the cleaned length must be 2, 4, 6, 8, or 10 characters. Any code that fails these checks returns `False`.
+</ParamField>
+
+<ParamField path="strict" type="bool" default="false">
+  Controls which bounding box is used to check whether the decoded point is inside Panama.
+
+  - `False` (default) — uses the same permissive bounding box as the official postal site: lat ∈ [6.0, 11.0], lng ∈ [-86.0, -74.0]. This includes coastal margins, some border areas with Costa Rica and Colombia, and surrounding ocean.
+  - `True` — uses a tighter bounding box adjusted to Panama's actual territory: lat ∈ [7.15, 9.70], lng ∈ [-83.10, -77.10].
+</ParamField>
+
+### Return Value
+
+`True` if the code is syntactically valid **and** its decoded coordinates fall within the chosen bounding box. `False` in all other cases, including:
+
+- Non-string input
+- Characters outside the base-30 alphabet (e.g., `I`, `O`, `U`, `Y`)
+- Odd-length body after normalization
+- Cleaned length greater than 10 characters
+- Decoded coordinates outside the bounding box for the chosen mode
+
+---
+
+## is_in_panama()
+
+`is_in_panama()` checks a raw latitude and longitude pair directly against Panama's bounding box, without involving any postal code parsing. Use this when you have already decoded coordinates and want to verify their location independently.
+
+### Function Signature
+
+```python
+def is_in_panama(lat: float, lng: float, strict: bool = False) -> bool
+```
+
+### Parameters
+
+<ParamField path="lat" type="float" required>
+  Latitude to check, in decimal degrees.
+</ParamField>
+
+<ParamField path="lng" type="float" required>
+  Longitude to check, in decimal degrees.
+</ParamField>
+
+<ParamField path="strict" type="bool" default="false">
+  Controls which bounding box is used, identical to the `strict` parameter on `validate()`.
+
+  - `False` (default) — permissive box: lat ∈ [6.0, 11.0], lng ∈ [-86.0, -74.0]
+  - `True` — tight box: lat ∈ [7.15, 9.70], lng ∈ [-83.10, -77.10]
+</ParamField>
+
+### Return Value
+
+`True` if both the latitude and longitude fall within the bounds defined by the chosen mode, `False` otherwise.
+
+---
+
+## Bounding Boxes
+
+Both functions share the same two bounding box definitions:
+
+| Mode | Lat range | Lng range | Notes |
+|------|-----------|-----------|-------|
+| Lax (default) | [6.0, 11.0] | [-86.0, -74.0] | Matches the official site; includes coastal margins and border areas |
+| Strict | [7.15, 9.70] | [-83.10, -77.10] | Adjusted to Panama's actual territory |
+
+<Note>
+  Neither `validate()` nor `is_in_panama()` checks whether a code corresponds to a real, inhabited address or an officially assigned delivery zone. A code can pass validation and still represent an unassigned area, a rural cell, or open ocean within the bounding box. Definitive address-level verification would require access to COTEL's internal assignment database.
+</Note>
+
+---
+
+## Examples
+
+```python
+from panama_postal import validate, is_in_panama
+
+# Valid code — correct format and falls inside Panama
+validate("ACC99-PJ42W")          # True
+
+# Invalid character — 'I' is not in the base-30 alphabet
+validate("ACCI99-PJ42W")         # False
+
+# Code too long after normalization
+validate("ACC99-PJ42W-XX")       # False
+
+# Syntactically valid code that falls outside Panama with strict mode
+validate("22-2222-2222", strict=True)  # False
+
+# Direct coordinate check — inside Panama (lax mode)
+is_in_panama(8.94, -79.56)              # True
+
+# Direct coordinate check — inside Panama (strict mode)
+is_in_panama(8.94, -79.56, strict=True) # True
+
+# Outside Panama's bounding box entirely
+is_in_panama(5.0, -79.0)               # False
+
+# Inside lax box but outside strict box
+is_in_panama(6.5, -85.0)               # True  (lax)
+is_in_panama(6.5, -85.0, strict=True)  # False (strict)
+```

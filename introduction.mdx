@@ -1,0 +1,71 @@
+---
+title: "Panama Postal: Decode & Enrich Panama Postal Codes"
+sidebarTitle: "Introduction"
+description: "An open-source Python toolkit and CLI to decode, encode, validate, and enrich Panama postal codes — zero external dependencies, pure Python 3.10+ stdlib."
+---
+
+Panama Postal is an open-source Python library and command-line tool for working with Panama's geospatial postal code system. Given a postal code like `ACC99-PJ42W`, it instantly decodes the embedded coordinates, resolves the estafeta (post office) zone, and walks the full political division hierarchy — province, district, corregimiento, village, and neighborhood — all without requiring any external packages beyond the Python standard library.
+
+## What Panama Postal Does
+
+Panama's postal codes encode a precise geographic location using a **four-level hierarchical grid** anchored at `(10°N, 83.5°W)`. A full ten-character code — two characters of estafeta prefix plus eight characters of geographic body — can pinpoint a location to within approximately 3.3 meters. Panama Postal reverse-engineers that math to give you clean, structured data from any valid code.
+
+| Level | Approx. Precision | Characters in Body |
+|-------|-------------------|--------------------|
+| MACRO | ~15.8 km          | 1st pair           |
+| MICRO | ~660 m            | 2nd pair           |
+| NANO  | ~26 m             | 3rd pair           |
+| PICO  | ~3.3 m            | 4th pair           |
+
+The geographic body uses a custom **base-30 alphabet** (`23456789ABCDEFGHJKLMNPQRSTVWXZ`) that deliberately excludes visually ambiguous characters (`0`, `1`, `I`, `O`, `U`, `Y`).
+
+## Key Capabilities
+
+- **Decode** any valid postal code to a `(lat, lng)` coordinate pair, precision level, and estafeta prefix.
+- **Encode** a GPS coordinate into the geographic body of a postal code (prefix requires the estafeta index).
+- **Validate** format correctness and whether decoded coordinates fall within Panama's bounding box.
+- **Estafeta lookup** — resolve a point to its post office name, postal zone, and service area via point-in-polygon against `estafeta.geojson.gz`.
+- **Political division lookup** — resolve a point to its province, district, corregimiento, village (*poblado*), and neighborhood (*barrio*), either offline (local GeoJSON files) or via the official API.
+
+## Module Overview
+
+Panama Postal is composed of four focused modules — each importable individually or used together:
+
+- **`panama_postal.py`** — Core codec: `decode()`, `encode()`, `validate()`, and `is_in_panama()`.
+- **`panama_postal_estafeta.py`** — `EstafetaIndex` class for estafeta point-in-polygon lookups against `estafeta.geojson.gz`.
+- **`panama_postal_location.py`** — `HybridLocator`, `LocalLocator`, and `RemoteLocator` for political division lookups, with automatic local-first / remote-fallback logic.
+- **`panama_postal_cli.py`** — Interactive and non-interactive command-line interface with color output, multi-code batch mode, and flags for offline or permissive operation.
+
+## Zero-Dependency Design
+
+Panama Postal requires only **Python 3.10 or later** and uses exclusively the standard library — `gzip`, `json`, `urllib`, `dataclasses`, `math`, and `pathlib`. There is no `pip install` step and no virtual environment needed.
+
+## Hybrid Offline / Online Operation
+
+For estafeta name and political division data, Panama Postal supports two modes:
+
+- **Offline** — Download the optional GeoJSON files from the official government site once and place them alongside the scripts. All lookups run locally via point-in-polygon geometry.
+- **Online fallback** — If the GeoJSON files are absent, `HybridLocator` automatically falls back to the official `codigospostalespanama.gob.pa` API endpoint. The codec itself (`decode`, `encode`, `validate`) always works fully offline.
+
+## Legal Notice
+
+This project is **not affiliated with, endorsed by, or sponsored by** COTEL, INEC, or any entity of the Panamanian government. The encoding algorithm is pure arithmetic over a geographic grid. The optional `.geojson.gz` files are public data from INEC Panama, downloaded directly from the official government site. Licensed under the **MIT License**.
+
+---
+
+## Explore the Docs
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Clone the repo and optionally download the GeoJSON data files for offline enrichment.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Decode your first postal code, validate inputs, and run the CLI in under five minutes.
+  </Card>
+  <Card title="Postal System Guide" icon="map" href="/guides/postal-system">
+    Understand Panama's four-level geospatial grid, the base-30 alphabet, and how codes are structured.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/decode">
+    Full reference for `decode`, `encode`, `validate`, `EstafetaIndex`, and `HybridLocator`.
+  </Card>
+</CardGroup>

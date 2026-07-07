@@ -1,47 +1,148 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Quickstart: Decode, Validate, and Enrich Postal Codes"
+sidebarTitle: "Quickstart"
+description: "Go from zero to a fully enriched postal code result in minutes — decode GPS coordinates, validate format and geography, run the CLI, and resolve estafeta and political divisions."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
-
-<Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
-
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+This guide walks you through Panama Postal's core workflows from the Python library and the command-line interface. All examples use real postal codes and real output values from the source. Start with a simple decode and build up to full geographic enrichment.
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  The GeoJSON files (`estafeta.geojson.gz`, `PROVINCIAS.geojson.gz`, etc.) are entirely optional. Steps 1–4 work without them. Steps 5–6 use local GeoJSON when available and automatically fall back to the official API endpoint when not.
 </Tip>
+
+<Steps>
+  ### Decode a postal code to coordinates
+
+  Import `decode` from `panama_postal` and pass any valid code. The returned `DecodedPostal` dataclass contains the center coordinates of the encoded grid cell, the precision level, and the estafeta prefix extracted from the first two characters.
+
+  ```python
+  from panama_postal import decode
+
+  d = decode("ACC99-PJ42W")
+  print(d.lat, d.lng)          # 8.94444609375  -79.56167109375001
+  print(d.level)               # PICO
+  print(d.precision_meters)    # 3.3
+  print(d.estafeta_prefix)     # AC
+  ```
+
+  The `level` field reflects how many character pairs were decoded. A full ten-character code (eight-character body) decodes to `PICO` level — the finest precision at approximately 3.3 meters. Shorter codes resolve to `NANO` (~26 m), `MICRO` (~660 m), or `MACRO` (~15.8 km).
+
+  `decode()` returns `None` if the input cannot be parsed — for example if it contains characters outside the base-30 alphabet (`23456789ABCDEFGHJKLMNPQRSTVWXZ`).
+
+  ### Validate format and geography
+
+  `validate()` checks two things: that the code has a valid format, and that the decoded coordinates fall within Panama's geographic bounding box. It returns `True` only when both conditions pass.
+
+  ```python
+  from panama_postal import validate
+
+  validate("ACC99-PJ42W")    # True
+  validate("ACCI99-PJ42W")   # False  (I is not in the base-30 alphabet)
+  validate("22-2222-2222")   # False  (coordinates fall outside Panama)
+  ```
+
+  By default, `validate()` uses Panama's strict territorial bounding box (`lat ∈ [7.15, 9.70]`, `lng ∈ [-83.10, -77.10]`). Pass `strict=False` (or use the `--laxo` CLI flag) to switch to the official site's permissive bounding box, which includes adjacent ocean areas.
+
+  ### Encode GPS coordinates to a postal code body
+
+  `encode()` converts a `(lat, lng)` pair into the geographic body of a postal code — the eight characters that represent the grid position. Note that the two-character estafeta prefix is **not** included in this output; resolving it requires a point-in-polygon lookup against `estafeta.geojson.gz`.
+
+  ```python
+  from panama_postal import encode
+
+  cuerpo = encode(8.305509375, -79.20167109375001)
+  print(cuerpo)   # 'M2C9A-F9A33'
+  ```
+
+  You can also encode at a coarser resolution by passing a `level` argument: `"MACRO"` (2 chars), `"MICRO"` (4 chars), `"NANO"` (6 chars), or `"PICO"` (8 chars, default).
+
+  ### Use the CLI
+
+  The CLI supports both interactive and non-interactive modes. It automatically loads `estafeta.geojson.gz` and the political division GeoJSON files if they are present in the current directory.
+
+  <CodeGroup>
+    ```bash Interactive mode
+    # Launches a prompt loop — type codes one at a time
+    python panama_postal_cli.py
+    ```
+
+    ```bash Single code lookup
+    python panama_postal_cli.py ACC99-PJ42W
+    ```
+
+    ```bash Multiple codes at once
+    python panama_postal_cli.py ACC99-PJ42W ACC9A-H2K2P
+    ```
+
+    ```bash Skip location lookup (no network needed)
+    python panama_postal_cli.py --no-location ACC99-PJ42W
+    ```
+  </CodeGroup>
+
+  In interactive mode, type a postal code at the `código>` prompt. Enter `salir`, `exit`, `quit`, or `q` to exit. The CLI prints coordinates, precision, estafeta data (if available), and political division hierarchy (if available or reachable via the API), along with a Google Maps link.
+
+  ### Look up estafeta name and area (requires `estafeta.geojson.gz`)
+
+  `EstafetaIndex` loads the compressed GeoJSON and performs a point-in-polygon search to identify which estafeta (post office service zone) a coordinate belongs to. When multiple polygons overlap, it returns the one with the smallest area.
+
+  ```python
+  from panama_postal import decode
+  from panama_postal_estafeta import EstafetaIndex
+
+  idx = EstafetaIndex.from_file("estafeta.geojson.gz")
+  d = decode("ACC99-PJ42W")
+  info = idx.lookup(d.lat, d.lng)
+
+  print(info["ESTAF_NAME"])          # Estafeta de paraiso
+  print(info["VM_LEVEL2D"])          # AC
+  print(info["AREA"] / 1e6)          # area in km²
+  ```
+
+  `lookup()` returns a dictionary of all properties stored in the GeoJSON feature, or `None` if the point does not fall within any estafeta polygon. Load the index once and reuse it across many lookups — `from_file()` parses the entire file into an in-memory spatial index.
+
+  ### Resolve political divisions (local GeoJSON or API fallback)
+
+  `HybridLocator` resolves a coordinate to its full political division hierarchy: province, district, corregimiento, village, and neighborhood. It checks for local GeoJSON files first and falls back to the official remote API if none are present.
+
+  ```python
+  from panama_postal_location import HybridLocator
+
+  loc = HybridLocator(".")
+  r = loc.lookup(8.94444609375, -79.56167109375001)
+
+  print(r["provincia"]["nombre"])      # PANAMÁ
+  print(r["distrito"]["nombre"])       # PANAMÁ
+  print(r["corregimiento"]["nombre"])  # ANCÓN
+  print(r["poblado"]["nombre"])        # ANCÓN
+  print(r["barrio"]["nombre"])         # AMADOR
+  ```
+
+  Each key in the result dictionary maps to either a `{"nombre": ..., "codigo": ...}` dict or `None` if the data was unavailable for that level. The `"."` argument tells `HybridLocator` to look for GeoJSON files in the current directory.
+
+  To force one mode explicitly, pass `prefer="local"` or `prefer="remote"` to `lookup()`:
+
+  ```python
+  # Force remote API regardless of local files
+  r = loc.lookup(8.94444609375, -79.56167109375001, prefer="remote")
+
+  # Force local only — returns None if no GeoJSON files present
+  r = loc.lookup(8.94444609375, -79.56167109375001, prefer="local")
+  ```
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up the repo and download optional GeoJSON data files for fully offline operation.
+  </Card>
+  <Card title="Postal System Guide" icon="map" href="/guides/postal-system">
+    Deep-dive into Panama's four-level geospatial grid and the base-30 alphabet.
+  </Card>
+  <Card title="decode() Reference" icon="code" href="/api/decode">
+    Full parameter and return type reference for the `decode` function.
+  </Card>
+  <Card title="HybridLocator Reference" icon="globe" href="/api/locators">
+    Configure local-first or remote-only lookup behavior for political divisions.
+  </Card>
+</CardGroup>

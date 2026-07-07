@@ -1,0 +1,104 @@
+---
+title: "Install Panama Postal: Clone, Configure, and Go"
+sidebarTitle: "Installation"
+description: "Set up Panama Postal in minutes — clone the repo, optionally download GeoJSON data files for fully offline enrichment, and verify your Python 3.10+ environment."
+---
+
+Panama Postal ships as a set of plain Python source files — no package index, no build step, no virtual environment required. The only prerequisite is **Python 3.10 or later**. Everything else is Python standard library.
+
+<Note>
+  There is no `pip install panama-postal`. Setup is a single `git clone`. If Python 3.10+ is available on your system, the library and CLI are ready to use immediately after cloning.
+</Note>
+
+## Installation Steps
+
+<Steps>
+  ### Clone the repository
+
+  Clone the project from GitHub and change into the project directory:
+
+  ```bash
+  git clone https://github.com/kass507/panama-postal.git
+  cd panama-postal
+  ```
+
+  The four source files — `panama_postal.py`, `panama_postal_estafeta.py`, `panama_postal_location.py`, and `panama_postal_cli.py` — are all you need to decode, encode, and validate postal codes.
+
+  ### Verify your Python version
+
+  Panama Postal uses `match` statements and union type hints (`X | Y`) introduced in Python 3.10. Confirm your version:
+
+  ```bash
+  python --version
+  # Python 3.10.x or higher required
+  ```
+
+  ### (Optional) Download GeoJSON data files for offline enrichment
+
+  For offline estafeta lookups and political division resolution, download the government-published GeoJSON files into the project directory:
+
+  ```bash
+  curl -O https://codigospostalespanama.gob.pa/estafeta.geojson.gz
+  curl -O https://codigospostalespanama.gob.pa/PROVINCIAS.geojson.gz
+  curl -O https://codigospostalespanama.gob.pa/DISTRITOS.geojson.gz
+  curl -O https://codigospostalespanama.gob.pa/CORREGIMIENTOS.geojson.gz
+  curl -O https://codigospostalespanama.gob.pa/POBLADOS.geojson.gz
+  curl -O https://codigospostalespanama.gob.pa/BARRIOS.geojson.gz
+  ```
+
+  Place these files in the same directory as the Python scripts so the library can find them automatically.
+
+  ### Verify the setup
+
+  Run the CLI with a known postal code to confirm everything is working:
+
+  ```bash
+  python panama_postal_cli.py ACC99-PJ42W
+  ```
+
+  You should see decoded coordinates, precision level, and — if the GeoJSON files are present — estafeta name and political division data.
+</Steps>
+
+## GeoJSON Data Files Explained
+
+Each `.geojson.gz` file serves a distinct enrichment purpose:
+
+| File | Enables |
+|------|---------|
+| `estafeta.geojson.gz` | Estafeta name (`ESTAF_NAME`), postal zone (`VM_LEVEL`, `VM_LEVEL2D`), and service area (`AREA`) via point-in-polygon lookup |
+| `PROVINCIAS.geojson.gz` | Province name and code (e.g. `PANAMÁ`) |
+| `DISTRITOS.geojson.gz` | District name and code (e.g. `PANAMÁ`) |
+| `CORREGIMIENTOS.geojson.gz` | Corregimiento name and code (e.g. `ANCÓN`) |
+| `POBLADOS.geojson.gz` | Village (*poblado*) name and code |
+| `BARRIOS.geojson.gz` | Neighborhood (*barrio*) name and code |
+
+<Note>
+  These files are **not bundled** in the repository. They are public data published by INEC Panama and downloaded directly from the official government site. Panama Postal does not redistribute them.
+</Note>
+
+## What Happens Without the GeoJSON Files
+
+The core codec — `decode()`, `encode()`, and `validate()` — works entirely without GeoJSON files since it is pure arithmetic over a geographic grid. For enrichment data:
+
+- **Estafeta lookups** (`EstafetaIndex`) require `estafeta.geojson.gz` and will not produce results without it.
+- **Political division lookups** (`HybridLocator`) automatically fall back to the official `codigospostalespanama.gob.pa/api/location` endpoint when local files are absent. An active internet connection is required for the fallback to succeed.
+
+<Warning>
+  The CLI prints a reminder when `estafeta.geojson.gz` is not found. You can suppress estafeta and location output entirely with the `--no-location` flag if you only need coordinates.
+</Warning>
+
+## Project File Overview
+
+| File | Description |
+|------|-------------|
+| `panama_postal.py` | Core codec: `decode`, `encode`, `validate`, `is_in_panama` |
+| `panama_postal_estafeta.py` | Estafeta lookup via point-in-polygon against `estafeta.geojson.gz` |
+| `panama_postal_location.py` | Political division lookup — local GeoJSON or remote API fallback |
+| `panama_postal_cli.py` | Command-line interface with interactive and batch modes |
+
+## CLI Flags Reference
+
+| Flag | Effect |
+|------|--------|
+| `--no-location` | Skips province/district lookup — faster, requires no network |
+| `--laxo` | Uses the official site's permissive bounding box for validation instead of the strict territory bbox |

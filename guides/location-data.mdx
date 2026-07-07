@@ -1,0 +1,155 @@
+---
+title: "Resolving Political Divisions from Coordinates"
+sidebarTitle: "Location Data"
+description: "How to resolve a coordinate pair to Panama's five political division levels — province, district, corregimiento, village, and neighborhood — using local GeoJSON files or the remote API."
+---
+
+Once you have a decoded coordinate pair, you can resolve it to Panama's administrative geography: province, district, corregimiento (township), poblado (village), and barrio (neighborhood). The `panama_postal_location` module provides three locator classes that cover different tradeoffs between speed, offline capability, and simplicity.
+
+<Tip>
+  **`HybridLocator` is the recommended choice for most use cases.** It automatically uses local GeoJSON files when they are present, and transparently falls back to the official remote API otherwise — giving you the best of both worlds without any extra configuration.
+</Tip>
+
+## Political Division Levels
+
+Panama uses a five-level administrative hierarchy. Each level in the result dict contains a `nombre` (name) and a `codigo` (identifier code):
+
+```python
+{
+    "provincia":     {"nombre": "PANAMÁ", "codigo": "08"},
+    "distrito":      {"nombre": "PANAMÁ", "codigo": "01"},
+    "corregimiento": {"nombre": "ANCÓN",  "codigo": "08"},
+    "poblado":       {"nombre": "ANCÓN",  "codigo": "003"},
+    "barrio":        {"nombre": "AMADOR", "codigo": "002"},
+}
+```
+
+Levels for which no data is available return `None` rather than raising an error, so you can safely check each key independently.
+
+## The Three Locator Classes
+
+<CardGroup cols={3}>
+  <Card title="RemoteLocator" icon="cloud">
+    Calls the official API endpoint `https://codigospostalespanama.gob.pa/api/location`. No local files required. Requires a network connection for every lookup.
+  </Card>
+  <Card title="LocalLocator" icon="hard-drive">
+    Does point-in-polygon against downloaded GeoJSON files. Works fully offline. Returns `None` for any level whose file is missing.
+  </Card>
+  <Card title="HybridLocator" icon="shuffle">
+    Tries local first; falls back to remote if no local data is available. Supports a `prefer` parameter for explicit control.
+  </Card>
+</CardGroup>
+
+## Optional GeoJSON Files for Local Lookups
+
+To enable offline resolution, download the boundary files for each political level you need. All files are hosted on the official government site.
+
+| File | Level |
+|------|-------|
+| `PROVINCIAS.geojson.gz` | Province |
+| `DISTRITOS.geojson.gz` | District |
+| `CORREGIMIENTOS.geojson.gz` | Corregimiento |
+| `POBLADOS.geojson.gz` | Village |
+| `BARRIOS.geojson.gz` | Neighborhood |
+
+```bash
+curl -O https://codigospostalespanama.gob.pa/PROVINCIAS.geojson.gz
+curl -O https://codigospostalespanama.gob.pa/DISTRITOS.geojson.gz
+curl -O https://codigospostalespanama.gob.pa/CORREGIMIENTOS.geojson.gz
+curl -O https://codigospostalespanama.gob.pa/POBLADOS.geojson.gz
+curl -O https://codigospostalespanama.gob.pa/BARRIOS.geojson.gz
+```
+
+You do not need to download all five files. `LocalLocator` and `HybridLocator` resolve whichever levels have a corresponding file present and leave the rest as `None`.
+
+## Code Examples
+
+<Tabs>
+  <Tab title="HybridLocator (recommended)">
+    ```python
+    from panama_postal_location import HybridLocator
+
+    lat, lng = 8.94444609375, -79.56167109375001
+
+    hybrid = HybridLocator(".")
+
+    # auto: uses local if files are present, otherwise remote
+    r = hybrid.lookup(lat, lng)
+
+    # force remote regardless of local files
+    r = hybrid.lookup(lat, lng, prefer="remote")
+
+    # force local only (returns None if no local files exist)
+    r = hybrid.lookup(lat, lng, prefer="local")
+
+    if r:
+        print(r["provincia"]["nombre"])      # PANAMÁ
+        print(r["distrito"]["nombre"])       # PANAMÁ
+        print(r["corregimiento"]["nombre"])  # ANCÓN
+        print(r["poblado"]["nombre"])        # ANCÓN
+        print(r["barrio"]["nombre"])         # AMADOR
+    ```
+  </Tab>
+  <Tab title="RemoteLocator">
+    ```python
+    from panama_postal_location import RemoteLocator
+
+    lat, lng = 8.94444609375, -79.56167109375001
+
+    # Default timeout is 10 seconds; adjust as needed
+    remote = RemoteLocator(timeout=10.0)
+    r = remote.lookup(lat, lng)
+
+    if r:
+        print(r["provincia"]["nombre"])      # PANAMÁ
+        print(r["corregimiento"]["nombre"])  # ANCÓN
+    ```
+  </Tab>
+  <Tab title="LocalLocator">
+    ```python
+    from panama_postal_location import LocalLocator
+
+    lat, lng = 8.94444609375, -79.56167109375001
+
+    # Pass the directory that contains the .geojson.gz files
+    local = LocalLocator(".")
+    r = local.lookup(lat, lng)
+
+    if r:
+        print(r["provincia"]["nombre"])      # PANAMÁ
+        print(r["corregimiento"]["nombre"])  # ANCÓN
+    ```
+  </Tab>
+</Tabs>
+
+## Checking for Local Data
+
+`HybridLocator.has_local_data()` returns `True` if at least one of the five GeoJSON boundary files is present in the configured directory. Use this to report data availability to your users or to decide at startup which mode to announce:
+
+```python
+from panama_postal_location import HybridLocator
+
+hybrid = HybridLocator(".")
+
+if hybrid.has_local_data():
+    print("Local boundary files found — lookups will be offline.")
+else:
+    print("No local files — lookups will use the remote API.")
+```
+
+## `RemoteLocator` Timeout
+
+`RemoteLocator` defaults to a 10-second timeout per request. You can configure this via the constructor:
+
+```python
+from panama_postal_location import RemoteLocator
+
+# Short timeout for latency-sensitive applications
+fast = RemoteLocator(timeout=3.0)
+```
+
+If the request times out or the endpoint returns an error, `lookup()` returns `None` rather than raising an exception.
+
+<Note>
+  The GeoJSON boundary files are data from Panama's national statistics institute (INEC) and are not included in the Panama Postal repository. They must be downloaded from the official government site before local lookups are available.
+</Note>
